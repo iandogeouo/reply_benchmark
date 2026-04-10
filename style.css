@@ -154,7 +154,7 @@ header span {
 }
 
 .section-title {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -385,6 +385,47 @@ textarea {
 .score-3 .score-fill { background: var(--warning); width: 60%; }
 .score-4 .score-fill { background: #84cc16; width: 80%; }
 .score-5 .score-fill { background: var(--success); width: 100%; }
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.summary-card {
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.summary-avg {
+  font-size: 36px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.summary-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg2);
+  margin-bottom: 8px;
+}
+
+.summary-low {
+  font-size: 13px;
+  color: var(--fg3);
+  margin-top: 8px;
+}
+
+.summary-card .score-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
 
 /* =========================================
    8. Reason Block & Lists
@@ -446,6 +487,11 @@ textarea {
 .issue-list li.bad::before {
   content: '✗';
   color: var(--danger);
+}
+
+.issue-list li.warn::before {
+  content: '⚠';
+  color: #f0a500;
 }
 
 /* =========================================
@@ -563,6 +609,12 @@ textarea {
   flex: 1;
 }
 
+.batch-controls {
+  display: none;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
 /* =========================================
    10. Table & Chips
 ========================================= */
@@ -599,11 +651,54 @@ textarea {
   font-weight: 600;
 }
 
+.upload-done {
+  border: 2px solid #4caf83;
+  background: color-mix(in srgb, #4caf83 8%, var(--bg1));
+  cursor: default;
+}
+.upload-done-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.upload-check {
+  font-size: 28px;
+}
+.upload-filename {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg1);
+}
+.upload-count {
+  font-size: 12px;
+  color: var(--fg3);
+}
+.upload-reset {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg3);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.upload-reset:hover {
+  color: var(--fg1);
+}
+
 .table-wrap {
   overflow-x: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface2);
+}
+
+td:nth-child(2),
+td:nth-child(3),
+td:nth-child(4) {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 table {
@@ -786,4 +881,26 @@ tbody td {
 .modal-body {
   padding: 28px;
   overflow-y: auto;
+}
+
+.content-block {
+  margin-bottom: 12px;
+}
+.content-label {
+  font-size: 11px;
+  color: var(--fg3);
+  margin-bottom: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.content-text {
+  font-size: 13px;
+  color: var(--fg1);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: var(--bg2);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--border);
 }

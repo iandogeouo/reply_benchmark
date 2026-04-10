@@ -27,9 +27,8 @@
       <div>
         <label>Judge 模型</label>
         <select id="modelSelect">
-          <option value="llama-3.3-70b-versatile">Llama 3.3 70B（推薦）</option>
-          <option value="llama-3.1-8b-instant">Llama 3.1 8B（快速）</option>
           <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+          <option value="gemma-4-31b-it">Gemma 4 (Google)</option>
         </select>
       </div>
       <div>
@@ -115,6 +114,15 @@
       <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="handleFileUpload(event)">
     </div>
 
+    <div class="batch-controls" id="batchControls">
+      <button class="btn btn-primary" id="btnBatchRun" onclick="runBatch()" disabled>
+        ▶ 開始批次評測
+      </button>
+      <button class="btn btn-secondary" onclick="exportCSV()" id="btnExport" disabled>
+        ↓ 匯出結果
+      </button>
+    </div>
+
     <div class="progress-wrap" id="progressWrap">
       <div class="progress-header">
         <span id="progressText">準備中...</span>
@@ -125,14 +133,7 @@
       </div>
     </div>
 
-    <div style="display:flex; gap:10px; margin-bottom:20px;" id="batchControls" style="display:none">
-      <button class="btn btn-primary" id="btnBatchRun" onclick="runBatch()" disabled>
-        ▶ 開始批次評測
-      </button>
-      <button class="btn btn-secondary" onclick="exportCSV()" id="btnExport" disabled>
-        ↓ 匯出結果
-      </button>
-    </div>
+    <div id="batchSummary" style="display:none"></div>
 
     <div class="table-wrap">
       <table id="batchTable">
@@ -173,6 +174,7 @@
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
+      <div id="modalContent" style="margin-bottom: 24px;"></div>
       <div class="score-grid" id="modalScoreGrid"></div>
       <div id="modalDetailBlocks"></div>
     </div>
