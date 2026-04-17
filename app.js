@@ -1,10 +1,56 @@
+// ── Confirm dialog ────────────────────────────────────────────
+function showConfirm(text, sub = '') {
+  return new Promise(resolve => {
+    document.getElementById('confirmText').textContent = text;
+    document.getElementById('confirmSub').textContent  = sub;
+    document.getElementById('confirmModal').classList.add('show');
+
+    const ok     = document.getElementById('confirmOk');
+    const cancel = document.getElementById('confirmCancel');
+
+    function cleanup(result) {
+      document.getElementById('confirmModal').classList.remove('show');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+    const onOk     = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+  });
+}
+
+// ── Toast ──────────────────────────────────────────────────────
+function toast(msg, type = 'error', duration = 3000) {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toastOut 0.2s ease forwards';
+    el.addEventListener('animationend', () => el.remove());
+  }, duration);
+}
+
 // ── Tab switching ──────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
-    b.classList.toggle('active', (i === 0 && tab === 'single') || (i === 1 && tab === 'batch'));
+    b.classList.toggle('active',
+      (i === 0 && tab === 'single') ||
+      (i === 1 && tab === 'batch') ||
+      (i === 2 && tab === 'records')
+    );
   });
   document.getElementById('page-single').classList.toggle('active', tab === 'single');
   document.getElementById('page-batch').classList.toggle('active', tab === 'batch');
+  document.getElementById('page-records').classList.toggle('active', tab === 'records');
+
+  
+  document.querySelector('.container > .card').style.display = 
+    tab === 'records' ? 'none' : '';
+
+  if (tab === 'records') loadRecords();
 }
 
 // ── Checkbox toggle ────────────────────────────────────────────
@@ -43,9 +89,9 @@ async function runSingleEval() {
 
   const doFidelity = document.getElementById('cb-fidelity').classList.contains('checked');
   if (!petition || !reply || (doFidelity && !civil)) {
-    alert(doFidelity
+    toast(doFidelity
       ? '請填寫所有欄位：陳情內容、公務員想回答的內容、擬答內容'
-      : '請填寫陳情內容與擬答內容');
+      : '請填寫陳情內容與擬答內容', 'warning');
     return;
   }
 
@@ -54,7 +100,7 @@ async function runSingleEval() {
   );
 
   if (!dimensions.length) {
-    alert('請至少選擇一個評估維度');
+    toast('請至少選擇一個評估維度', 'warning');
     return;
   }
 
@@ -70,14 +116,28 @@ async function runSingleEval() {
   try {
     const results = await evaluate(petition, civil, reply, model, dimensions);
     renderSingleResult(results);
+    await saveRecord('single', [{
+      petition: petition,
+      civil: civil,
+      reply: reply,
+      results: results
+    }], model);
     resultArea.classList.add('show');
   } catch (e) {
-    alert('評估失敗：' + e.message);
+    toast('評估失敗：' + e.message, 'error');
     console.error(e);
   } finally {
     btn.disabled = false;
     loading.classList.remove('show');
   }
+}
+
+async function saveRecord(mode, rows, model) {
+  await fetch('/api/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, rows, model })
+  });
 }
 
 // ── Render single result ───────────────────────────────────────
@@ -215,11 +275,11 @@ function parseCSV(text) {
   const replyIdx    = headers.findIndex(h => h.includes('擬答'));
 
   if (petitionIdx === -1 || replyIdx === -1) {
-    alert('CSV 需要包含「陳情內容」和「擬答內容」欄位');
+    toast('CSV 需要包含「陳情內容」和「擬答內容」欄位', 'warning');
     return [];
   }
   if (doFidelity && civilIdx === -1) {
-    alert('勾選「忠實性」時，CSV 需要包含「公務員輸入」欄位（或取消勾選忠實性）');
+    toast('勾選「忠實性」時，CSV 需要包含「公務員輸入」欄位（或取消勾選忠實性）', 'warning');
     return [];
   }
 
@@ -319,6 +379,7 @@ async function runBatch() {
   btn.disabled = false;
   document.getElementById('btnExport').disabled = false;
   renderBatchSummary();
+  await saveRecord('batch', batchData, model);
 }
 
 function updateRowStatus(id, status) {
@@ -334,7 +395,7 @@ function updateRowStatus(id, status) {
 }
 
 function scoreChip(s) {
-  if (s === null) return '—';
+  if (s == null) return '—';
   return `<span class="score-chip chip-${s}">${s}</span>`;
 }
 
@@ -426,7 +487,19 @@ document.getElementById('batchTableBody').addEventListener('click', (e) => {
 });
 
 function openModal(row) {
-  
+  // 第一次點才 render，之後直接用 cache
+  if (!row._modalHTML) {
+    // 暫時借用隱藏的 div 來 render
+    renderSingleResult(row.results, 'modalScoreGrid', 'modalDetailBlocks');
+    row._modalHTML = {
+      score:  document.getElementById('modalScoreGrid').innerHTML,
+      detail: document.getElementById('modalDetailBlocks').innerHTML,
+    };
+  } else {
+    document.getElementById('modalScoreGrid').innerHTML   = row._modalHTML.score;
+    document.getElementById('modalDetailBlocks').innerHTML = row._modalHTML.detail;
+  }
+
   document.getElementById('modalContent').innerHTML = `
     <div class="content-block">
       <div class="content-label">陳情內容</div>
@@ -443,7 +516,6 @@ function openModal(row) {
   `;
 
   document.getElementById('modalTitle').textContent = `第 ${row.id} 筆 — 詳細分析`;
-  renderSingleResult(row.results, 'modalScoreGrid', 'modalDetailBlocks');
   document.getElementById('detailModal').classList.add('show');
 }
 
@@ -490,10 +562,173 @@ function onUploadSuccess(filename) {
 function resetUpload() {
   const zone = document.getElementById('uploadZone');
   zone.classList.remove('upload-done');
-  zone.innerHTML = `<!-- 你原本的上傳區 HTML 貼回來 -->`;
+  zone.onclick = () => document.getElementById('fileInput').click();
+  zone.innerHTML = `
+    <div class="upload-icon">📂</div>
+    <div><strong>點擊上傳</strong> 或拖曳 CSV 到這裡</div>
+    <p>支援 .csv 格式</p>
+  `;
+  document.getElementById('fileInput').value = '';
   batchData = [];
-  document.getElementById('batchTableBody').innerHTML = '';
+  document.getElementById('batchTableBody').innerHTML = `
+    <tr><td colspan="8">
+      <div class="empty">
+        <div class="empty-icon">📋</div>
+        <p>上傳 CSV 以開始批次評測</p>
+      </div>
+    </td></tr>`;
   document.getElementById('btnBatchRun').disabled = true;
   document.getElementById('batchControls').style.display = 'none';
   document.getElementById('batchSummary').style.display = 'none';
+  document.getElementById('progressWrap').classList.remove('show');
+}
+
+
+// ── Records management ─────────────────────────────────────────
+async function loadRecords() {
+  const list = document.getElementById('recordsList');
+  list.innerHTML = '<p style="color:var(--fg3);font-size:13px">載入中...</p>';
+
+  const records = await fetch('/api/records').then(r => r.json());
+  if (!records.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">📭</div>
+        <p>還沒有任何紀錄</p>
+      </div>`;
+    return;
+  }
+
+  // 最新的在最上面
+  records.reverse();
+  // 顯示統計
+  if (records.length) {
+    const totalCount = records.length;
+    const totalRows  = records.reduce((a, r) => a + r.count, 0);
+
+    const avgOf = (key) => {
+      const vals = records.map(r => r[key]).filter(v => v != null);
+      return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
+    };
+
+    document.getElementById('statCount').textContent        = totalCount;
+    document.getElementById('statTotal').textContent        = totalRows;
+    document.getElementById('statCompleteness').textContent = avgOf('avg_completeness');
+    document.getElementById('statFidelity').textContent     = avgOf('avg_fidelity');
+    document.getElementById('statTone').textContent         = avgOf('avg_tone');
+    document.getElementById('recordsStats').style.display  = 'flex';
+  } else {
+    document.getElementById('recordsStats').style.display = 'none';
+  }
+  list.innerHTML = records.map((r, i) => `
+    <div class="record-row" data-index="${i}" onclick="openRecord(this)">
+      <div class="record-meta">
+        <span class="record-mode">${r.mode === 'batch' ? '批次' : '單筆'}</span>
+        <span class="record-time">${r.timestamp}</span>
+        <span class="record-model">${r.model}</span>
+        <span style="color:var(--fg3);font-size:12px">${r.count} 筆</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="record-scores">
+          ${r.avg_completeness != null ? `<span class="score-chip chip-${Math.round(r.avg_completeness)}">📝 ${r.avg_completeness}</span>` : ''}
+          ${r.avg_fidelity     != null ? `<span class="score-chip chip-${Math.round(r.avg_fidelity)}">🔍 ${r.avg_fidelity}</span>` : ''}
+          ${r.avg_tone         != null ? `<span class="score-chip chip-${Math.round(r.avg_tone)}">🎙️ ${r.avg_tone}</span>` : ''}
+        </div>
+        <a class="btn-download" href="/records/${r.filename}" download onclick="event.stopPropagation()">↓</a>
+        <button class="btn-delete" onclick="deleteRecord(event,'${r.filename}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+  
+window._allRecords = records;
+}
+
+
+if (!window._recordCache) window._recordCache = {};
+
+async function openRecord(el) {
+  const index = parseInt(el.dataset.index);
+  const meta  = window._allRecords[index];
+
+  // 先開 modal，讓使用者立刻看到回應
+  document.getElementById('recordModalTitle').textContent =
+    `${meta.mode === 'batch' ? '批次' : '單筆'}｜${meta.timestamp}｜${meta.model}`;
+  document.getElementById('recordModalStats').innerHTML = '';
+  document.getElementById('recordModalBody').innerHTML =
+    '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--fg3)">載入中…</td></tr>';
+  document.getElementById('recordModal').classList.add('show');
+
+  // 有快取就直接用，否則 fetch
+  if (!window._recordCache[meta.filename]) {
+    window._recordCache[meta.filename] = await fetch(`/api/records/${meta.filename}`).then(r => r.json());
+  }
+  const rows = window._recordCache[meta.filename];
+  if (!rows.length) return;
+
+  // 頂部小摘要
+  document.getElementById('recordModalStats').innerHTML = `
+    <div style="display:flex;gap:16px;font-size:13px;color:var(--fg3)">
+      <span>共 <strong style="color:var(--fg)">${rows.length}</strong> 筆</span>
+      ${meta.avg_completeness != null ? `<span>完整性平均 <strong style="color:var(--accent)">${meta.avg_completeness}</strong></span>` : ''}
+      ${meta.avg_fidelity     != null ? `<span>忠實性平均 <strong style="color:var(--accent)">${meta.avg_fidelity}</strong></span>` : ''}
+      ${meta.avg_tone         != null ? `<span>語調平均 <strong style="color:var(--accent)">${meta.avg_tone}</strong></span>` : ''}
+    </div>
+  `;
+
+  // table
+  document.getElementById('recordModalBody').innerHTML = rows.map((r, i) => `
+    <tr style="cursor:pointer" onclick="openRecordRow(${i})" data-index="${i}">
+      <td style="font-family:var(--mono);color:var(--fg3)">${r['編號'] ?? i + 1}</td>
+      <td title="${r['陳情內容'] ?? ''}">${(r['陳情內容'] ?? '').substring(0, 40)}...</td>
+      <td>${scoreChip(r['完整性\n分數'])}</td>
+      <td>${scoreChip(r['忠實性\n分數'])}</td>
+      <td>${scoreChip(r['語調\n分數'])}</td>
+    </tr>
+  `).join('');
+
+  // 把資料存起來，點列的時候用
+  window._recordRows = rows;
+}
+
+function openRecordRow(index) {
+  const r = window._recordRows[index];
+  
+  // 組成 results 格式餵給現有的 renderSingleResult
+  const results = {};
+  if (r['完整性\n分數'] != null) results.completeness = { score: r['完整性\n分數'], reason: r['完整性原因'] ?? '' };
+  if (r['忠實性\n分數'] != null) results.fidelity     = { score: r['忠實性\n分數'], reason: r['忠實性原因'] ?? '' };
+  if (r['語調\n分數']   != null) results.tone         = { score: r['語調\n分數'],   reason: r['語調原因']   ?? '' };
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="content-block">
+      <div class="content-label">陳情內容</div>
+      <div class="content-text">${r['陳情內容'] ?? '—'}</div>
+    </div>
+    <div class="content-block">
+      <div class="content-label">公務員輸入</div>
+      <div class="content-text">${r['公務員輸入'] ?? '—'}</div>
+    </div>
+    <div class="content-block">
+      <div class="content-label">擬答內容</div>
+      <div class="content-text">${r['擬答內容'] ?? '—'}</div>
+    </div>
+  `;
+
+  document.getElementById('modalTitle').textContent = `第 ${r['編號'] ?? index + 1} 筆 — 詳細分析`;
+  renderSingleResult(results, 'modalScoreGrid', 'modalDetailBlocks');
+  document.getElementById('detailModal').classList.add('show');
+}
+
+async function deleteRecord(e, filename) {
+  e.stopPropagation();
+  if (!await showConfirm('確定要刪除這筆紀錄？', '此操作無法復原')) return;
+  await fetch(`/api/records/${filename}`, { method: 'DELETE' });
+  delete window._recordCache[filename];
+  toast('紀錄已刪除', 'success', 2000);
+  loadRecords();
+}
+
+function closeRecordModal(e) {
+  if (e && e.target !== document.getElementById('recordModal')) return;
+  document.getElementById('recordModal').classList.remove('show');
 }
