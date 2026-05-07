@@ -53,6 +53,36 @@
         </div>
       </div>
     </div>
+    <!-- Prompt 設定 toggle -->
+    <div class="prompt-toggle-bar">
+      <button class="prompt-toggle-btn" onclick="togglePromptSettings()" id="promptToggleBtn">
+        ⚙ 自訂評分 Prompt
+      </button>
+    </div>
+    <div id="promptSettings" class="prompt-settings" style="display:none">
+      <div class="prompt-dim-tabs">
+        <button class="prompt-dim-tab active" onclick="switchPromptTab('completeness', this)">回復完整性</button>
+        <button class="prompt-dim-tab" onclick="switchPromptTab('fidelity', this)">忠實性</button>
+        <button class="prompt-dim-tab" onclick="switchPromptTab('tone', this)">語調風格</button>
+      </div>
+      <div id="promptPanel-completeness" class="prompt-panel">
+        <div class="prompt-vars">變數：<code>&lt;&lt;petition&gt;&gt;</code>、<code>&lt;&lt;reply&gt;&gt;</code></div>
+        <textarea id="promptText-completeness" class="prompt-textarea" spellcheck="false"></textarea>
+      </div>
+      <div id="promptPanel-fidelity" class="prompt-panel" style="display:none">
+        <div class="prompt-vars">變數：<code>&lt;&lt;petition&gt;&gt;</code>、<code>&lt;&lt;civil&gt;&gt;</code>、<code>&lt;&lt;reply&gt;&gt;</code></div>
+        <textarea id="promptText-fidelity" class="prompt-textarea" spellcheck="false"></textarea>
+      </div>
+      <div id="promptPanel-tone" class="prompt-panel" style="display:none">
+        <div class="prompt-vars">變數：<code>&lt;&lt;reply&gt;&gt;</code></div>
+        <textarea id="promptText-tone" class="prompt-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="prompt-actions">
+        <button class="btn btn-primary" onclick="savePrompts()" style="padding:8px 20px;font-size:12px">儲存</button>
+        <button class="btn btn-secondary" onclick="resetCurrentPrompt()" style="padding:8px 20px;font-size:12px">還原此維度預設</button>
+        <span id="promptSaveStatus" style="font-size:12px;color:var(--fg3)"></span>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════ 單筆評測 ══════════════════════════════ -->
@@ -236,6 +266,7 @@
     </div>
     <div class="modal-body">
       <div id="recordModalStats" style="margin-bottom:16px"></div>
+      <div id="recordPromptSnapshot" style="margin-bottom:16px"></div>
       <div class="table-wrap">
         <table id="recordModalTable">
           <thead>

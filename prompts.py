@@ -1,14 +1,27 @@
-def completeness(petition, reply):
-    return f"""這是一個市政信箱的回覆評估項目。
+import json
+import os
+
+PROMPTS_FILE = 'prompts_config.json'
+
+# 固定的 JSON 格式指令，不開放給使用者修改
+_JSON_SUFFIX = {
+    'completeness': '\n\n只回傳 JSON，不要有其他文字：\n{"score": 分數, "core_issues": ["問題1", "問題2"], "missing": ["未回答的點，如果都有回答則為空陣列"], "reason": "一句話說明扣分原因，如果滿分則說明原因"}',
+    'fidelity':     '\n\n只回傳 JSON，不要有其他文字：\n{"score": 分數, "added": ["AI 額外加的承諾或資訊，沒有則為空陣列"], "missing": ["遺漏的重要資訊，沒有則為空陣列"], "law_references": ["AI自行引用的法規條文，供人工核實，沒有則為空陣列"], "distorted": ["被扭曲的內容，沒有則為空陣列"], "reason": "一句話總結"}',
+    'tone':         '\n\n只回傳 JSON，不要有其他文字：\n{"score": 分數, "issues": ["問題點，如果沒有問題則為空陣列"], "positives": ["做得好的地方"], "reason": "一句話總結"}',
+}
+
+# 使用者可編輯的評估邏輯部分
+DEFAULTS = {
+    'completeness': """這是一個市政信箱的回覆評估項目。
 
 以下是一封市民陳情內容，以及AI生成的建議回覆。
 請評估「建議回覆」是否完整回應了陳情中的核心問題。
 
 【市民陳情】
-{petition}
+<<petition>>
 
 【建議回覆】
-{reply}
+<<reply>>
 
 請：
 1. 找出陳情中的核心問題（1-3個）
@@ -18,27 +31,28 @@ def completeness(petition, reply):
    - 背景說明與情緒描述
    - 建議性質但非強烈要求的內容
 2. 評估建議回覆有沒有回答到這些問題或是告知目前案件進展(例如已請研議等)
-3. 給出 1-5 分（1=完全沒回答, 5=完整回答）
+3. 依照以下評分標準給出 1-5 分：
 
-只回傳 JSON，不要有其他文字：
-{{"score": 分數, "core_issues": ["問題1", "問題2"], "missing": ["未回答的點，如果都有回答則為空陣列"], "reason": "一句話說明扣分原因，如果滿分則說明原因"}}"""
+評分標準：
+- 5分：所有核心問題都有明確回答或告知處理進度
+- 4分：主要核心問題有回答，但有一個次要核心問題只帶過或未提
+- 3分：回答了部分核心問題，但有一個主要核心問題完全沒提到
+- 2分：只有非常表面的回應（如「已轉請相關單位處理」），沒有實質說明
+- 1分：完全沒有回應任何核心問題，或回覆與陳情內容無關""",
 
-
-def fidelity(petition, civil, reply):
-    return f"""這是一個市政信箱的回覆評估項目。
-
+    'fidelity': """這是一個市政信箱的回覆評估項目。
 
 以下是市民陳情、公務員想表達的核心內容，以及 AI 生成的建議回覆。
 請評估「建議回覆」是否忠實呈現了公務員提供的資訊，沒有超出、扭曲或遺漏重要內容。
 
 【市民陳情】
-{petition}
+<<petition>>
 
 【公務員想回答的內容】
-{civil}
+<<civil>>
 
 【AI 建議回覆】
-{reply}
+<<reply>>
 
 評估重點：
 - 有沒有新增公務員沒有提到的承諾或資訊（符合實務的法規說明、補充建議、標準行政程序描述不在此列）
@@ -57,26 +71,27 @@ def fidelity(petition, civil, reply):
 
 - 回覆語句與陳情情境是否相符（如道歉語用在感謝案件）屬語調問題，不在忠實性評估範圍
 
+依照以下評分標準給出 1-5 分：
 
-請給出 1-5 分（1=嚴重扭曲或超出, 5=完全忠實呈現）
+評分標準：
+- 5分：完全忠實呈現公務員內容，無添加、無遺漏、無扭曲
+- 4分：整體忠實，但有輕微潤飾或補充了無關緊要的背景說明
+- 3分：有一處明顯添加未經授權的承諾或資訊，或遺漏一項重要內容
+- 2分：有多處添加或遺漏，或有一處明顯扭曲公務員原意
+- 1分：嚴重扭曲或大幅超出公務員提供的內容""",
 
-只回傳 JSON，不要有其他文字：
-{{"score": 分數, "added": ["AI 額外加的承諾或資訊，沒有則為空陣列"], "missing": ["遺漏的重要資訊，沒有則為空陣列"], "law_references": ["AI自行引用的法規條文，供人工核實，沒有則為空陣列"], "distorted": ["被扭曲的內容，沒有則為空陣列"], "reason": "一句話總結"}}"""
-
-
-def tone(reply):
-    return f"""你是一個回覆專家，熟悉台灣政府回覆的語調與格式標準，負責評估市政信箱的回覆是否符合標準。
+    'tone': """你是一個回覆專家，熟悉台灣政府回覆的語調與格式標準，負責評估市政信箱的回覆是否符合標準。
 
 以下是回覆用語的原則與範例供參考：
 - 抬頭：親愛的市民朋友您好：*(可有可無，視情況而定)*
 
-- 第一句話敘明係由哪一局處處理，例如： 
-    (一) 有關您反映…，經交由本府OO局處理說明如下 
-    (二) 有關您反映…，經由本府OO局同仁與您電話聯繫說明 
+- 第一句話敘明係由哪一局處處理，例如：
+    (一) 有關您反映…，經交由本府OO局處理說明如下
+    (二) 有關您反映…，經由本府OO局同仁與您電話聯繫說明
 
 - 結尾加上適當的祝福語並由機關首長署名，例如：
     (一) 祝福語：「敬祝 萬事如意」、「敬祝 身體健康」、「敬祝 順心如意」、「敬祝 順利成功」、「敬祝 平安順心」、「敬祝 健康快樂」、「敬祝 學業進步」等。
-    (二) 機關首長署名： 桃園市選舉委員會 主任委員○○○ 敬上、桃園市政府交通局 局長OOO 敬上、桃園市中壢區公所 區長OOO 敬上等。 
+    (二) 機關首長署名： 桃園市選舉委員會 主任委員○○○ 敬上、桃園市政府交通局 局長OOO 敬上、桃園市中壢區公所 區長OOO 敬上等。
 
 - 減少公文用語、用字遣詞儘量口語化。 例如：
     「臺端來函敬悉」、「上開」、「俾利」、「賡續」、「業已」等，可分別改為「您的來信我們非常重視/ 您的來信我們已經收到了/ 謝謝您○月○日的來信」、「上述/ 前述」、「以利」、「繼續」、「已經」。
@@ -85,11 +100,10 @@ def tone(reply):
     口語化的對象是對民眾的稱謂與溝通語氣，不是對違規對象或行政程序的描述用語（如「懲處」「裁罰」「依法辦理」）。
     只標記真正影響民眾觀感的語調問題，避免建議語意相近的替換詞。
 
-
 以下是一封市民陳情的建議回覆，請評估其語調與格式是否符合上述的回覆標準。
 
 【建議回覆】
-{reply}
+<<reply>>
 
 評估標準：
 - 回覆的開頭語氣是否符合陳情的性質(建議、問題、抱怨等)
@@ -99,7 +113,38 @@ def tone(reply):
 - 是否有錯別字或語意不清的句子
 - 是否符合上述原則與範例
 
-請給出 1-5 分（1=完全不符合標準, 5=完全符合標準）
+請給出 1-5 分（1=完全不符合標準, 5=完全符合標準）"""
+}
 
-只回傳 JSON，不要有其他文字：
-{{"score": 分數, "issues": ["問題點，如果沒有問題則為空陣列"], "positives": ["做得好的地方"], "reason": "一句話總結"}}"""
+VARIABLES = {
+    'completeness': ['<<petition>>', '<<reply>>'],
+    'fidelity':     ['<<petition>>', '<<civil>>', '<<reply>>'],
+    'tone':         ['<<reply>>'],
+}
+
+
+def _load():
+    if os.path.exists(PROMPTS_FILE):
+        with open(PROMPTS_FILE, 'r', encoding='utf-8') as f:
+            saved = json.load(f)
+        return {k: saved.get(k, DEFAULTS[k]) for k in DEFAULTS}
+    return dict(DEFAULTS)
+
+
+def _format(template, dim, **kwargs):
+    result = template
+    for key, value in kwargs.items():
+        result = result.replace(f'<<{key}>>', value)
+    return result + _JSON_SUFFIX[dim]
+
+
+def completeness(petition, reply):
+    return _format(_load()['completeness'], 'completeness', petition=petition, reply=reply)
+
+
+def fidelity(petition, civil, reply):
+    return _format(_load()['fidelity'], 'fidelity', petition=petition, civil=civil, reply=reply)
+
+
+def tone(reply):
+    return _format(_load()['tone'], 'tone', reply=reply)

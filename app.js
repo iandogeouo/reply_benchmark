@@ -1,3 +1,62 @@
+// ── Prompt Settings ───────────────────────────────────────────
+let _promptDefaults = {};
+let _currentPromptDim = 'completeness';
+
+async function loadPrompts() {
+  const res = await fetch('/api/prompts').then(r => r.json());
+  _promptDefaults = res.defaults;
+  const prompts = res.prompts;
+  ['completeness', 'fidelity', 'tone'].forEach(dim => {
+    document.getElementById(`promptText-${dim}`).value = prompts[dim] || '';
+  });
+}
+
+function togglePromptSettings() {
+  const panel = document.getElementById('promptSettings');
+  const btn   = document.getElementById('promptToggleBtn');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  btn.classList.toggle('active', open);
+  if (open && !document.getElementById('promptText-completeness').value) loadPrompts();
+}
+
+function switchPromptTab(dim, el) {
+  _currentPromptDim = dim;
+  document.querySelectorAll('.prompt-dim-tab').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  ['completeness', 'fidelity', 'tone'].forEach(d => {
+    document.getElementById(`promptPanel-${d}`).style.display = d === dim ? 'block' : 'none';
+  });
+  document.getElementById('promptSaveStatus').textContent = '';
+}
+
+async function savePrompts() {
+  const payload = {};
+  ['completeness', 'fidelity', 'tone'].forEach(dim => {
+    payload[dim] = document.getElementById(`promptText-${dim}`).value;
+  });
+  await fetch('/api/prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const status = document.getElementById('promptSaveStatus');
+  status.textContent = '已儲存';
+  status.style.color = 'var(--success)';
+  setTimeout(() => { status.textContent = ''; }, 2000);
+}
+
+async function resetCurrentPrompt() {
+  if (!await showConfirm(`確定要還原「${_currentPromptDim}」的 Prompt 為預設值？`, '')) return;
+  await fetch('/api/prompts/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dimension: _currentPromptDim })
+  });
+  document.getElementById(`promptText-${_currentPromptDim}`).value = _promptDefaults[_currentPromptDim] || '';
+  toast('已還原為預設 Prompt', 'success', 2000);
+}
+
 // ── Confirm dialog ────────────────────────────────────────────
 function showConfirm(text, sub = '') {
   return new Promise(resolve => {
@@ -665,6 +724,28 @@ async function openRecord(el) {
   const rows = window._recordCache[meta.filename];
   if (!rows.length) return;
 
+  // Prompt snapshot
+  const snap = meta.prompts_snapshot;
+  const snapEl = document.getElementById('recordPromptSnapshot');
+  if (snap) {
+    const DIM_LABELS = { completeness: '回復完整性', fidelity: '忠實性', tone: '語調風格' };
+    snapEl.innerHTML = `
+      <div class="prompt-toggle-bar" style="border-top:none;padding-top:0">
+        <button class="prompt-toggle-btn" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.classList.toggle('active')">
+          ⚙ 查看當時評分 Prompt
+        </button>
+        <div style="display:none;margin-top:12px">
+          ${Object.entries(snap).map(([dim, text]) => `
+            <div style="margin-bottom:12px">
+              <div class="prompt-vars" style="margin-bottom:4px;font-weight:600">${DIM_LABELS[dim] || dim}</div>
+              <textarea class="prompt-textarea" readonly style="min-height:120px;opacity:0.8;cursor:default">${text}</textarea>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  } else {
+    snapEl.innerHTML = '';
+  }
+
   // 頂部小摘要
   document.getElementById('recordModalStats').innerHTML = `
     <div style="display:flex;gap:16px;font-size:13px;color:var(--fg3)">
@@ -692,12 +773,14 @@ async function openRecord(el) {
 
 function openRecordRow(index) {
   const r = window._recordRows[index];
-  
-  // 組成 results 格式餵給現有的 renderSingleResult
-  const results = {};
-  if (r['完整性\n分數'] != null) results.completeness = { score: r['完整性\n分數'], reason: r['完整性原因'] ?? '' };
-  if (r['忠實性\n分數'] != null) results.fidelity     = { score: r['忠實性\n分數'], reason: r['忠實性原因'] ?? '' };
-  if (r['語調\n分數']   != null) results.tone         = { score: r['語調\n分數'],   reason: r['語調原因']   ?? '' };
+
+  // 優先用完整 results（新格式），fallback 到只有 score/reason（舊格式）
+  const results = r.results ?? {};
+  if (!r.results) {
+    if (r['完整性\n分數'] != null) results.completeness = { score: r['完整性\n分數'], reason: r['完整性原因'] ?? '' };
+    if (r['忠實性\n分數'] != null) results.fidelity     = { score: r['忠實性\n分數'], reason: r['忠實性原因'] ?? '' };
+    if (r['語調\n分數']   != null) results.tone         = { score: r['語調\n分數'],   reason: r['語調原因']   ?? '' };
+  }
 
   document.getElementById('modalContent').innerHTML = `
     <div class="content-block">

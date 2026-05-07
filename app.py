@@ -259,6 +259,7 @@ def save_record():
             '忠實性原因':  r.get('fidelity', {}).get('reason', ''),
             '語調\n分數':  r.get('tone', {}).get('score'),
             '語調原因':    r.get('tone', {}).get('reason', ''),
+            'results':    r,
         })
     json_path = os.path.join(RECORDS_FOLDER, filename.replace('.xlsx', '.json'))
     with open(json_path, 'w', encoding='utf-8') as f:
@@ -284,6 +285,7 @@ def save_record():
         'avg_completeness': avg_score('completeness'),
         'avg_fidelity':    avg_score('fidelity'),
         'avg_tone':        avg_score('tone'),
+        'prompts_snapshot': prompts._load(),
     })
 
     with open(meta_path, 'w', encoding='utf-8') as f:
@@ -337,6 +339,45 @@ def delete_record(filename):
             os.remove(path)
 
     return jsonify({'status': 'ok'})
+
+# ── Prompt 管理 ────────────────────────────────────────────
+@app.route('/api/prompts', methods=['GET'])
+def get_prompts():
+    return jsonify({
+        'prompts':   prompts._load(),
+        'defaults':  prompts.DEFAULTS,
+        'variables': prompts.VARIABLES,
+    })
+
+@app.route('/api/prompts', methods=['POST'])
+def save_prompts():
+    data = request.get_json()
+    current = prompts._load()
+    for key in prompts.DEFAULTS:
+        if key in data:
+            current[key] = data[key]
+    with open(prompts.PROMPTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(current, f, ensure_ascii=False, indent=2)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/prompts/reset', methods=['POST'])
+def reset_prompts():
+    data = request.get_json() or {}
+    dim  = data.get('dimension')
+    if os.path.exists(prompts.PROMPTS_FILE):
+        with open(prompts.PROMPTS_FILE, 'r', encoding='utf-8') as f:
+            saved = json.load(f)
+        if dim and dim in saved:
+            del saved[dim]
+        else:
+            saved = {}
+        if saved:
+            with open(prompts.PROMPTS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(saved, f, ensure_ascii=False, indent=2)
+        else:
+            os.remove(prompts.PROMPTS_FILE)
+    return jsonify({'status': 'ok'})
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
