@@ -1,4 +1,6 @@
 # Project data
+records/
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
