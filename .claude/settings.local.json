@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(where gh *)"
+      "Bash(where gh *)",
+      "WebSearch"
     ]
   }
 }

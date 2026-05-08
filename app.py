@@ -1,11 +1,13 @@
 import os
 import json
 import concurrent.futures
+import re
 from flask import Flask, request, jsonify, send_from_directory
 from groq import Groq
 from google import genai
 from dotenv import load_dotenv
 from google.genai import types
+from google.genai.errors import ServerError
 import prompts
 import time
 from datetime import datetime
@@ -44,13 +46,28 @@ def call_gemini(prompt, model):
     )
     )
     text = response.candidates[0].content.parts[-1].text
-    # 清理 Markdown 代碼塊
     clean = text.replace('```json', '').replace('```', '').strip()
-    return json.loads(clean)
+    start = clean.find('{')
+    if start > 0:
+        clean = clean[start:]
+    clean = re.sub(r',+', ',', clean) 
+    clean = re.sub(r',\s*([}\]])', r'\1', clean)
+    clean = re.sub(r"'", '"', clean)
+    clean = re.sub(r'//.*?\n', '\n', clean)
+    try:
+        result = json.loads(clean)
+    except json.JSONDecodeError as e:
+        print(f"[gemma] JSON decode error: {e}")
+        print(f"[gemma] Response: {clean}")
+        raise
+
+    if 'score' in result:
+        result['score'] = int(result['score'])
+    return result
 
 
 # ── 路由：自動分流 ─────────────────────────────────────────────
-def get_model_response(prompt, model_name, retries=3):
+def get_model_response(prompt, model_name, retries=4):
     last_err = None
     for i in range(retries):
         try:
@@ -61,11 +78,17 @@ def get_model_response(prompt, model_name, retries=3):
         except json.JSONDecodeError as e:
             last_err = e
             if i < retries - 1:
-                time.sleep(1 * (i + 1))
+                time.sleep(2 ** i)
                 continue
             raise
+        except ServerError as e:
+            last_err = e
+            if i < retries - 1:
+                print(f"[Gemini 500] retry {i+1}/{retries}，等 {2 ** i}s...")
+                time.sleep(2 ** i)
+                continue
         except Exception as e:
-            raise  # 非 JSON 錯誤不 retry，直接拋
+            raise  # 其他錯誤直接拋
     raise last_err
 
 # ── Serve static files ─────────────────────────────────────────
