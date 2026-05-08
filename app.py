@@ -10,8 +10,11 @@ import prompts
 import time
 from datetime import datetime
 from openpyxl import load_workbook, Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+
+#請先創建.env檔案 並放入google ai studio的API KEY以及groq的API KEY
 
 load_dotenv()
 gemini_client = genai.Client(api_key=os.getenv('Gemini_API_KEY'))
@@ -19,7 +22,7 @@ app    = Flask(__name__, static_folder='.')
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 
-# ── Groq call (取消註解並確保回傳格式穩定) ───────────────────────────
+# ── Groq call  ───────────────────────────
 def call_groq(prompt, model):
     response = groq_client.chat.completions.create(
         model=model,
@@ -75,23 +78,27 @@ def static_files(path):
     return send_from_directory('.', path)
 
 
-# ── Evaluate endpoint ──────────────────────────────────────────
+# ── 評測過程 ──────────────────────────────────────────
 @app.route('/api/evaluate', methods=['POST'])
 def evaluate():
     data       = request.get_json()
     petition   = data.get('petition', '').strip()
     civil      = data.get('civil', '').strip()
     reply      = data.get('reply', '').strip()
-    model      = data.get('model', 'llama-3.3-70b-versatile')
+    model      = data.get('model', '')
     dimensions = data.get('dimensions', ['completeness', 'fidelity', 'tone'])
 
-    if not petition or not reply:
+    if not reply:
         return jsonify({'error': '缺少必要欄位'}), 400
     if 'fidelity' in dimensions and not civil:
         return jsonify({'error': '評估忠實性需要提供公務員想回答的內容'}), 400
     if not dimensions:
         return jsonify({'error': '請至少選擇一個評估維度'}), 400
-
+    if 'completeness' in dimensions and not petition:
+        return jsonify({'error': '評估完整性需要提供陳情內容'}), 400
+    if not model:
+        return jsonify({'error': '無可用模型'}), 400
+    
     # 依勾選的維度建立要執行的任務
     tasks = {}
     if 'completeness' in dimensions:
@@ -171,9 +178,9 @@ def save_record():
     headers = [
         ('編號', 6), ('時間', 18), ('評估模型', 15),
         ('陳情內容', 45), ('公務員輸入', 35), ('擬答內容', 45),
-        ('完整性\n分數', 9), ('完整性原因', 55),
-        ('忠實性\n分數', 9), ('忠實性原因', 55),
-        ('語調\n分數', 9),  ('語調原因', 55),
+        ('完整性分數', 9), ('完整性原因', 55),
+        ('忠實性分數', 9), ('忠實性原因', 55),
+        ('語調分數', 9),  ('語調原因', 55),
     ]
 
     for col, (h, w) in enumerate(headers, 1):
@@ -253,11 +260,11 @@ def save_record():
             '陳情內容':   row.get('petition', ''),
             '公務員輸入': row.get('civil', ''),
             '擬答內容':   row.get('reply', ''),
-            '完整性\n分數': r.get('completeness', {}).get('score'),
+            '完整性分數': r.get('completeness', {}).get('score'),
             '完整性原因':  r.get('completeness', {}).get('reason', ''),
-            '忠實性\n分數': r.get('fidelity', {}).get('score'),
+            '忠實性分數': r.get('fidelity', {}).get('score'),
             '忠實性原因':  r.get('fidelity', {}).get('reason', ''),
-            '語調\n分數':  r.get('tone', {}).get('score'),
+            '語調分數':  r.get('tone', {}).get('score'),
             '語調原因':    r.get('tone', {}).get('reason', ''),
             'results':    r,
         })
